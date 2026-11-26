@@ -28,4 +28,5 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends flac ffmpeg
       - run: zig build -Dcipher-root=Cipher
       - run: zig build test-audio -Dcipher-root=Cipher --summary all
+      - run: zig build test-playback -Dcipher-root=Cipher --summary all
       - run: zig build -Dcipher-root=Cipher -Doptimize=ReleaseSafe
