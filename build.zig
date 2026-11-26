@@ -67,6 +67,21 @@ pub fn build(b: *std.Build) void {
     const run_audio = b.addRunArtifact(audio_tests);
     b.step("test-audio", "Run the independent FLAC differential suite").dependOn(&run_audio.step);
 
+    const playback_tests = b.addTest(.{
+        .name = "nocturne-playback-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/playback_test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    playback_tests.root_module.addAnonymousImport("app", .{ .root_source_file = b.path("src/main.zig") });
+    playback_tests.root_module.addImport("cipher", cipher);
+    playback_tests.root_module.addImport("audio", audio);
+    playback_tests.root_module.link_libc = true;
+    const run_playback = b.addRunArtifact(playback_tests);
+    b.step("test-playback", "Verify bounded playback format conversion").dependOn(&run_playback.step);
+
     // verify — bit-exact comparison of the decoder against ffmpeg on real files.
     const verify = b.addExecutable(.{
         .name = "flac-verify",
