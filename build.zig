@@ -82,7 +82,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    playback_tests.root_module.addAnonymousImport("app", .{ .root_source_file = b.path("src/main.zig") });
+    playback_tests.root_module.addImport("app", app);
     playback_tests.root_module.addImport("cipher", cipher);
     playback_tests.root_module.addImport("audio", audio);
     playback_tests.root_module.addImport("format", format_module);
