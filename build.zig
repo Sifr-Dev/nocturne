@@ -15,12 +15,11 @@ pub fn build(b: *std.Build) void {
     cipher.addAnonymousImport("resources", .{ .root_source_file = .{ .cwd_relative = b.fmt("{s}/resources.zig", .{framework}) } });
 
     const audio = b.createModule(.{
-        .root_source_file = .{ .cwd_relative = b.fmt("{s}/src/audio_api.zig", .{framework}) },
+        .root_source_file = b.path("src/audio_api.zig"),
         .target = target,
         .optimize = optimize,
     });
     audio.link_libc = true;
-    audio.addAnonymousImport("resources", .{ .root_source_file = .{ .cwd_relative = b.fmt("{s}/resources.zig", .{framework}) } });
 
     const app = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -58,7 +57,7 @@ pub fn build(b: *std.Build) void {
     const audio_tests = b.addTest(.{
         .name = "nocturne-audio-tests",
         .root_module = b.createModule(.{
-            .root_source_file = .{ .cwd_relative = b.fmt("{s}/src/audio/audio_test.zig", .{framework}) },
+            .root_source_file = b.path("src/audio/audio_test.zig"),
             .target = target,
             .optimize = optimize,
         }),
