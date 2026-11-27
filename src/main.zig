@@ -11,6 +11,7 @@
 const std = @import("std");
 const cipher = @import("cipher");
 const audio = @import("audio");
+const format = @import("format");
 
 const runtime = cipher.runtime;
 const input = cipher.input;
@@ -23,8 +24,7 @@ fn lockSpin(m: *std.atomic.Mutex) void {
     while (!m.tryLock()) std.atomic.spinLoopHint();
 }
 
-pub const test_convertPlaybackS16 = convertPlaybackS16;
-pub const test_writeStereoS16Frame = writeStereoS16Frame;
+pub const test_convertToPlaybackFormat = convertToPlaybackFormat;
 
 const TrackInfo = struct {
     path: []const u8,
@@ -89,42 +89,32 @@ const Shared = struct {
     quit: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 };
 
-fn writeStereoS16Frame(dst: []u8, frame: usize, left: i16, right: i16) !void {
-    const offset = frame * 4;
-    if (offset + 4 > dst.len) return error.InvalidAudioBuffer;
-    dst[offset] = @truncate(@as(u16, @bitCast(left)));
-    dst[offset + 1] = @truncate(@as(u16, @bitCast(left)) >> 8);
-    dst[offset + 2] = @truncate(@as(u16, @bitCast(right)));
-    dst[offset + 3] = @truncate(@as(u16, @bitCast(right)) >> 8);
-}
 
-fn convertPlaybackS16(alloc: std.mem.Allocator, samples: []const i64, channels: u8, bits_per_sample: u8) ![]u8 {
-    if (channels != 1 and channels != 2) return error.UnsupportedPlaybackChannels;
-    if (bits_per_sample == 0 or bits_per_sample > 32 or samples.len % channels != 0) return error.InvalidAudioFormat;
-    const maxv: f64 = @floatFromInt((@as(i64, 1) << @intCast(bits_per_sample - 1)) - 1);
-    const minv: f64 = -@as(f64, @floatFromInt(@as(i64, 1) << @intCast(bits_per_sample - 1)));
-    const bytes = try alloc.alloc(u8, samples.len / channels * 4);
-    errdefer alloc.free(bytes);
-    for (samples, 0..) |sample, i| {
-        const c = @max(minv, @min(maxv, @as(f64, @floatFromInt(sample))));
-        const q: i16 = @intFromFloat(@round(if (c < 0) c / -minv * 32768.0 else c / maxv * 32767.0));
-        if (channels == 1) {
-            try writeStereoS16Frame(bytes, i, q, q);
-        } else if (i % 2 == 0) {
-            const right_sample = samples[i + 1];
-            const rc = @max(minv, @min(maxv, @as(f64, @floatFromInt(right_sample))));
-            const rq: i16 = @intFromFloat(@round(if (rc < 0) rc / -minv * 32768.0 else rc / maxv * 32767.0));
-            try writeStereoS16Frame(bytes, i / 2, q, rq);
-        }
-    }
-    return bytes;
+/// Decoded samples in the fixed playback format: 44.1 kHz, 16-bit, stereo.
+/// Sources at another rate are resampled deterministically; mono is duplicated
+/// into both channels. Multichannel sources are rejected rather than squeezed
+/// through a stereo buffer.
+fn convertToPlaybackFormat(
+    alloc: std.mem.Allocator,
+    samples: []const i64,
+    source_rate: u32,
+    channels: u8,
+    bits_per_sample: u8,
+) ![]u8 {
+    const source = format.output_format.Format{
+        .sample_rate = source_rate,
+        .channels = channels,
+        .bits_per_sample = bits_per_sample,
+    };
+    return format.output_format.convert(alloc, samples, source, format.output_format.playback_format);
 }
 
 fn loadS16(alloc: std.mem.Allocator, path: []const u8) !struct { bytes: []u8, rate: u32, channels: u8, frames: u64, title: []const u8, artist: []const u8, lrc: []audio.lrc.Line } {
     var dec = try audio.flac.decodeFile(alloc, path);
     defer dec.deinit();
-    const ch: u8 = 2;
-    const bytes = try convertPlaybackS16(alloc, dec.samples, dec.channels, dec.bits_per_sample);
+    const target = format.output_format.playback_format;
+    const ch: u8 = target.channels;
+    const bytes = try convertToPlaybackFormat(alloc, dec.samples, dec.sample_rate, dec.channels, dec.bits_per_sample);
     // lyrics: prefer .lrc sidecar, fall back to embedded VORBIS LYRICS
     var lrc: []audio.lrc.Line = &.{};
     if (path.len > 5 and std.mem.endsWith(u8, path, ".flac")) {
@@ -141,7 +131,7 @@ fn loadS16(alloc: std.mem.Allocator, path: []const u8) !struct { bytes: []u8, ra
     // dup title/artist out of the arena before it is released
     const title = alloc.dupe(u8, dec.comment("TITLE") orelse std.fs.path.basename(path)) catch return error.OutOfMemory;
     const artist = alloc.dupe(u8, dec.comment("ARTIST") orelse "unknown") catch return error.OutOfMemory;
-    return .{ .bytes = bytes, .rate = dec.sample_rate, .channels = ch, .frames = dec.samples.len / ch, .title = title, .artist = artist, .lrc = lrc };
+    return .{ .bytes = bytes, .rate = target.sample_rate, .channels = ch, .frames = bytes.len / (ch * 2), .title = title, .artist = artist, .lrc = lrc };
 }
 
 const LoadedTrack = struct {
@@ -228,14 +218,13 @@ pub const App = struct {
 
     fn audioThreadMain(self: *App) void {
         var pulse: ?audio.pulse.Pulse = null;
-        if (self.shared.src_rate != 44100 or self.shared.src_channels != 2) {
-            std.debug.print("NOCTURNE_AUDIO_FALLBACK reason=unsupported_playback_format rate={d} ch={d}\n", .{ self.shared.src_rate, self.shared.src_channels });
-        } else {
-            pulse = audio.pulse.Pulse.open(self.shared.src_rate, self.shared.src_channels) catch |err| blk: {
-                std.debug.print("NOCTURNE_AUDIO_FALLBACK reason=pulse_open_failed err={s}\n", .{@errorName(err)});
-                break :blk null;
-            };
-        }
+        // Every loaded track is already in the playback format, so the stream
+        // never needs to change format between tracks or during a crossfade.
+        const target = format.output_format.playback_format;
+        pulse = audio.pulse.Pulse.open(target.sample_rate, target.channels) catch |err| blk: {
+            std.debug.print("NOCTURNE_AUDIO_FALLBACK reason=pulse_open_failed err={s}\n", .{@errorName(err)});
+            break :blk null;
+        };
         self.pulse_ok = pulse != null;
         if (pulse == null) std.debug.print("NOCTURNE_AUDIO_FALLBACK reason=pulse_open_failed\n", .{});
         const CHUNK_FRAMES: usize = 1024;
