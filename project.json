@@ -1,0 +1,10 @@
+{
+  "name": "nocturne",
+  "description": "Offline music player with bit-exact FLAC decode, LRC lyrics and crossfade",
+  "stack": [
+    "zig"
+  ],
+  "status": "active",
+  "primary_language": "Zig",
+  "cipher_version": "pinned via -Dcipher-root"
+}
