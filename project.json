@@ -1,10 +1,16 @@
 {
-  "name": "nocturne",
-  "description": "Offline music player with bit-exact FLAC decode, LRC lyrics and crossfade",
+  "name": "Nocturne",
+  "displayName": "Nocturne",
+  "description": "Offline music player with a from-zero bit-exact FLAC decoder, LRC/VORBIS lyrics, playlists and sample-exact crossfade",
+  "summary": "Native offline player built on the Phantom framework; decodes FLAC, reads synchronized lyrics, plays through Pulse/PipeWire or renders WAV, with no network code.",
   "stack": [
     "zig"
   ],
   "status": "active",
   "primary_language": "Zig",
-  "cipher_version": "pinned via -Dcipher-root"
+  "cipher_version": "pinned via -Dcipher-root",
+  "framework": "Phantom",
+  "framework_repository": "https://github.com/Sifr-Dev/Phantom",
+  "license": "MIT",
+  "test_count": 26
 }

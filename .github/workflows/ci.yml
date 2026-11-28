@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: Sifr-Dev/Cipher
+          repository: Sifr-Dev/Phantom
           path: Cipher
       - name: Cache Zig toolchain
         id: zig-cache
@@ -47,4 +47,5 @@ jobs:
       - run: zig build -Dcipher-root=Cipher
       - run: zig build test-audio -Dcipher-root=Cipher --summary all
       - run: zig build test-playback -Dcipher-root=Cipher --summary all
+      - run: zig build test-format -Dcipher-root=Cipher --summary all
       - run: zig build -Dcipher-root=Cipher -Doptimize=ReleaseSafe
