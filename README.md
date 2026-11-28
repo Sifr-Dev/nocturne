@@ -2,6 +2,8 @@
 
 Nocturne is an offline music player built with Cipher. It decodes FLAC files, reads synchronized lyrics, plays through the local audio service, and renders mixes to WAV without a network connection or a separately installed Cipher runtime.
 
+**Pinned Cipher:** `fca41d8` (CI checks out this exact commit).
+
 ## Requirements
 
 - Zig 0.17.1 and a Cipher checkout at `../Cipher`, or pass `-Dcipher-root=/path/to/Cipher`.
