@@ -21,6 +21,12 @@ pub fn build(b: *std.Build) void {
     });
     audio.link_libc = true;
 
+    const format_module = b.createModule(.{
+        .root_source_file = b.path("src/format.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const app = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -29,6 +35,7 @@ pub fn build(b: *std.Build) void {
     app.link_libc = true;
     app.addImport("cipher", cipher);
     app.addImport("audio", audio);
+    app.addImport("format", format_module);
     const exe = b.addExecutable(.{ .name = "nocturne", .root_module = app });
     b.installArtifact(exe);
 
@@ -74,12 +81,26 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    playback_tests.root_module.addAnonymousImport("app", .{ .root_source_file = b.path("src/main.zig") });
+    playback_tests.root_module.addImport("app", app);
     playback_tests.root_module.addImport("cipher", cipher);
     playback_tests.root_module.addImport("audio", audio);
+    playback_tests.root_module.addImport("format", format_module);
     playback_tests.root_module.link_libc = true;
     const run_playback = b.addRunArtifact(playback_tests);
     b.step("test-playback", "Verify bounded playback format conversion").dependOn(&run_playback.step);
+
+    const format_tests = b.addTest(.{
+        .name = "nocturne-format-tests",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/resampler_test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    format_tests.root_module.addImport("format", format_module);
+    const run_format = b.addRunArtifact(format_tests);
+    b.step("test-format", "Verify deterministic resampling and output-format conversion")
+        .dependOn(&run_format.step);
 
     // verify — bit-exact comparison of the decoder against ffmpeg on real files.
     const verify = b.addExecutable(.{
